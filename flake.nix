@@ -1,11 +1,7 @@
 {
-<<<<<<< HEAD
-  description = "Development shell for esp32 board";
-
-=======
-  description = "Development shell for esp32-c3 board";
->>>>>>> 69ce78ab56d4a12475a2091d8a00381c72a52fce
+description = "Development shell for esp32 board";
   inputs = {
+
     flake-parts.url = "github:hercules-ci/flake-parts";
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     # agenix-shell.url = "github:aciceri/agenix-shell";
@@ -69,29 +65,6 @@
           '';
         };
       };
-<<<<<<< HEAD
-    };
-=======
-    in 
-    with pkgs;
-    {
-      devShells.default = mkShell {
-        nativeBuildInputs = [
-        openssl
-        pkg-config
-        cargo-generate
-        rage
-        (rust-bin.selectLatestNightlyWith (toolchain: toolchain.default.override {
-          extensions = [ "rust-src" ];
-          targets = ["riscv32imc-unknown-none-elf"];
-        }))
-        ];
-      shellHook = ''
-      WIFI=$(rage -d ./secrets/secret.txt.age -i ~/.config/sops/age/keys.txt)
-      echo $WIFI
-      '';
-      };
-    });
->>>>>>> 69ce78ab56d4a12475a2091d8a00381c72a52fce
+};
 }
 
