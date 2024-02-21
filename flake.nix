@@ -61,7 +61,9 @@ description = "Development shell for esp32 board";
 
           enterShell = ''
           WIFI=$(rage -d ./secrets/wiffy.age -i ~/.config/sops/age/keys.txt)
+          SSID=$(rage -d ./secrets/ssid.age -i ~/.config/sops/age/keys.txt)
           echo $WIFI
+          echo $SSID
           '';
         };
       };
