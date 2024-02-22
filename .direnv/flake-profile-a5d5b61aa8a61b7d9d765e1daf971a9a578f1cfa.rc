@@ -69,9 +69,9 @@ export DEVENV_ROOT='\''/home/alexn/projects/esp-wiffy'\''
 export DEVENV_STATE='\''/home/alexn/projects/esp-wiffy/.devenv/state'\''
 
 
-WIFI=$(rage -d ./secrets/wiffy.age -i ~/.config/sops/age/keys.txt)
-SSID=$(rage -d ./secrets/ssid.age -i ~/.config/sops/age/keys.txt)
-echo $WIFI
+export PASSWORD=$(rage -d ./secrets/wiffy.age -i ~/.config/sops/age/keys.txt)
+export SSID=$(rage -d ./secrets/ssid.age -i ~/.config/sops/age/keys.txt)
+echo $PASSWORD
 echo $SSID
 
 export PS1="\[\e[0;34m\](devenv)\[\e[0m\] ${PS1-}"

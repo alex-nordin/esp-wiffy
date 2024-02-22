@@ -89,24 +89,37 @@ async fn main(spawner: Spawner) -> ! {
         let mut socket = TcpSocket::new(&stack, &mut rx_buffer, &mut tx_buffer);
         socket.set_timeout(Some(embassy_time::Duration::from_secs(10)));
 
-        let localhost = (Ipv4Address::new(127, 0, 0, 1), 1883);
-        println!("connecting to local socket: localhost:1882");
-        let local_socket = socket.connect(localhost).await;
+        // let localhost = (Ipv4Address::new(127, 0, 0, 1), 45923);
+        println!("connecting to local socket: localhost:45923");
+        let remote_endpoint = (Ipv4Address::new(142, 250, 185, 115), 80);
+        let local_socket = socket.connect(remote_endpoint).await;
         if let Err(e) = local_socket {
             println!("connection error {:?}", e);
             continue;
         }
         // println!("connected, lets test by posting to socket");
-        // let mut buf = [0; 1024];
+        let mut buf = [0; 1024];
         loop {
             use embedded_io_async::Write;
             let r = socket
-                .write_all(b"I am speaking to you through a socket")
+                .write_all(b"GET / HTTP/1.0\r\nHost: www.mobile-j.de\r\n\r\n")
                 .await;
             if let Err(e) = r {
                 println!("write error: {:?}", e);
                 break;
             }
+            let n = match socket.read(&mut buf).await {
+                Ok(0) => {
+                    println!("read EOF");
+                    break;
+                }
+                Ok(n) => n,
+                Err(e) => {
+                    println!("read error: {:?}", e);
+                    break;
+                }
+            };
+            println!("{}", core::str::from_utf8(&buf[..n]).unwrap());
             Timer::after(Duration::from_millis(3000)).await;
         }
     }
