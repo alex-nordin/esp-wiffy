@@ -16,15 +16,22 @@ use esp_wifi::{
 use hal::{
     clock::ClockControl, embassy, peripherals::Peripherals, prelude::*, timer::TimerGroup, Rng,
 };
+use rust_mqtt::{
+    client::{client::MqttClient, client_config::ClientConfig, client_config::MqttVersion},
+    utils::rng_generator::CountingRng,
+};
 use static_cell::make_static;
 
 const SSID: &str = env!("SSID");
 const PASSWORD: &str = env!("PASSWORD");
+const MQTT_PASSWORD: &str = env!("MQTT_PASS");
+const MQTT_USER: &str = "peep";
 
 #[main]
 async fn main(spawner: Spawner) -> ! {
     println!("SSID set as: {}", SSID);
-    println!("PASSWORD set as: {}", PASSWORD);
+    println!("MQTT_USER set as: {}", MQTT_USER);
+    println!("MQTT_PASSWORD set as: {}", MQTT_PASSWORD);
     let peripherals = Peripherals::take();
     let system = peripherals.SYSTEM.split();
 
@@ -56,6 +63,12 @@ async fn main(spawner: Spawner) -> ! {
         make_static!(StackResources::<3>::new()),
         seed
     ));
+    // let stack: &'static Stack<_> = make_static!(Stack::new(
+    //     wifi_interface,
+    //     dhcp_conf,
+    //     make_static!(StackResources::<3>::new()),
+    //     seed
+    // ));
 
     match spawner.spawn(connection(controller)) {
         Ok(()) => println!("spawning connection task... are we still connected to wifi?"),
@@ -83,53 +96,134 @@ async fn main(spawner: Spawner) -> ! {
         Timer::after(Duration::from_millis(500)).await;
     }
 
-    let mut rx_buffer = [0; 4096];
-    let mut tx_buffer = [0; 4096];
     loop {
-        let mut socket = TcpSocket::new(&stack, &mut rx_buffer, &mut tx_buffer);
-        socket.set_timeout(Some(embassy_time::Duration::from_secs(10)));
+        let mut rx_buffer = [0; 4096];
+        let mut tx_buffer = [0; 4096];
+        let localhost = (Ipv4Address::new(127, 0, 0, 1), 1883);
+        let mut tcp_socket = TcpSocket::new(&stack, &mut rx_buffer, &mut tx_buffer);
 
-        // let localhost = (Ipv4Address::new(127, 0, 0, 1), 45923);
-        println!("connecting to local socket: localhost:45923");
-        let remote_endpoint = (Ipv4Address::new(142, 250, 185, 115), 80);
-        let local_socket = socket.connect(remote_endpoint).await;
-        if let Err(e) = local_socket {
-            println!("connection error {:?}", e);
+        tcp_socket.set_timeout(Some(embassy_time::Duration::from_secs(10)));
+
+        println!("connecting...");
+        // let tcp_response = tcp_socket.connect(localhost).await;
+        if let Err(e) = tcp_response {
+            println!("connect error: {:?}", e);
             continue;
         }
-        // println!("connected, lets test by posting to socket");
-        let mut buf = [0; 1024];
+        println!("connected!");
+        // // println!("connected!");
+        // // match tcp_socket.connect(localhost).await {
+        // //     Ok(()) => println!("connected to localhost"),
+        // //     Err(e) => println!("connection error: {:?}", e),
+        // // }
+        // loop {
+        //     match tcp_socket.connect(localhost).await {
+        //         Ok(()) => {
+        //             println!("connected to localhost");
+        //             break;
+        //         }
+        //         Err(e) => println!("connection error: {:?}", e),
+        //     }
+        //     Timer::after(Duration::from_millis(500)).await;
+        // }
+        // tcp_response = tcp_socket.connect(localhost).await;
+        // let rng_counter = CountingRng(50000);
+        let mut mqtt_conf: ClientConfig<'_, 5, CountingRng> =
+            ClientConfig::new(MqttVersion::MQTTv5, CountingRng(50000));
+        mqtt_conf.add_client_id("esp");
+        mqtt_conf.add_username(MQTT_USER);
+        mqtt_conf.add_password(MQTT_PASSWORD);
+
+        let mut r_buffer = [0; 225];
+        let mut w_buffer = [0; 225];
+
+        let mut mqtt_client = MqttClient::new(
+            tcp_socket,
+            &mut w_buffer,
+            100,
+            &mut r_buffer,
+            100,
+            mqtt_conf,
+        );
+
+        match mqtt_client.connect_to_broker().await {
+            Ok(()) => (),
+            Err(e) => println!("encountered mqtt error: {:?}", e),
+        }
+
         loop {
-            use embedded_io_async::Write;
-            let r = socket
-                .write_all(b"GET / HTTP/1.0\r\nHost: www.mobile-j.de\r\n\r\n")
-                .await;
-            if let Err(e) = r {
-                println!("write error: {:?}", e);
-                break;
-            }
-            let n = match socket.read(&mut buf).await {
-                Ok(0) => {
-                    println!("read EOF");
-                    break;
-                }
-                Ok(n) => n,
-                Err(e) => {
-                    println!("read error: {:?}", e);
-                    break;
-                }
-            };
-            println!("{}", core::str::from_utf8(&buf[..n]).unwrap());
-            Timer::after(Duration::from_millis(3000)).await;
+            mqtt_client
+                .send_message(
+                    "test",
+                    b"hey, I'm an esp32c3",
+                    rust_mqtt::packet::v5::publish_packet::QualityOfService::QoS2,
+                    true,
+                )
+                .await
+                .unwrap();
+            Timer::after(Duration::from_secs(5)).await;
         }
     }
-    // loop {}
 }
+
+// #[embassy_executor::task]
+// async fn mqtt_connect() {
+//     let mut msg_buffer = [0u8; 4096];
+
+//     let mut rx_buffer = [0; 4096];
+//     let mut tx_buffer = [0; 4096];
+//     let localhost = (Ipv4Address::new(127, 0, 0, 1), 1883);
+//     let mut tcp_socket = TcpSocket::new(&stack, &mut rx_buffer, &mut tx_buffer);
+
+//     // let tcp_response = tcp_socket.connect(localhost).await;
+//     match tcp_socket.connect(localhost).await {
+//         Ok(()) => (),
+//         Err(e) => println!("connection error: {:?}", e),
+//     }
+//     // tcp_response = tcp_socket.connect(localhost).await;
+//     let rng_counter = CountingRng(50000);
+//     let mut mqtt_conf = ClientConfig::new(MqttVersion::MQTTv5, rng_counter);
+//     mqtt_conf.add_username(MQTT_USER);
+//     mqtt_conf.add_password(MQTT_PASSWORD);
+
+//     let mut r_buffer = [0; 225];
+//     let mut w_buffer = [0; 225];
+
+//     // network_driver: T,
+//     // buffer: &'a mut [u8],
+//     // buffer_len: usize,
+//     // recv_buffer: &'a mut [u8],
+//     // recv_buffer_len: usize,
+//     // config: ClientConfig<'a, MAX_PROPERTIES, R>,
+//     let mut mqtt_client = MqttClient::new(
+//         tcp_socket,
+//         &mut w_buffer,
+//         100,
+//         &mut r_buffer,
+//         100,
+//         mqtt_conf,
+//     );
+
+//     match mqtt_client.connect_to_broker().await {
+//         Ok(()) => (),
+//         Err(e) => println!("encountered mqtt error: {:?}", e),
+//     }
+
+//     loop {
+//         mqtt_client.send_message(
+//             "test",
+//             b"hey, I'm an esp32c3",
+//             rust_mqtt::packet::v5::publish_packet::QualityOfService::QoS2,
+//             true,
+//         );
+//         Timer::after(Duration::from_secs(5)).await;
+//     }
+// }
 
 #[embassy_executor::task]
 async fn connection(mut controller: WifiController<'static>) {
     println!("trying to connect ");
-    println!("Device capabilities {:?}", controller.get_capabilities());
+    println!("device capabilities {:?}", controller.get_capabilities());
     loop {
         match esp_wifi::wifi::get_wifi_state() {
             WifiState::StaConnected => {

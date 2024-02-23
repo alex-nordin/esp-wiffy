@@ -568,13 +568,13 @@ dependencies = [
  "embassy-executor",
  "embassy-net",
  "embassy-time",
- "embedded-io-async",
  "embedded-svc",
  "esp-backtrace",
  "esp-println",
  "esp-wifi",
  "esp32c3-hal",
  "heapless 0.8.0",
+ "rust-mqtt",
  "static_cell",
 ]
 
@@ -1230,6 +1230,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "46b71a9d9206e8b46714c74255adcaea8b11e0350c1d8456165073c3f75fc81a"
 
 [[package]]
+name = "rand_core"
+version = "0.6.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ec0be4795e2f6a28069bec0b5ff3e2ac9bafc99e6a9a7dc3547996c5c816922c"
+
+[[package]]
 name = "regex"
 version = "1.10.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1277,6 +1283,18 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 1.0.109",
+]
+
+[[package]]
+name = "rust-mqtt"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8f71160765f368fd9a84e0955e2ddb6d64ac9018fee1c5323354d6d08c816b40"
+dependencies = [
+ "embedded-io",
+ "embedded-io-async",
+ "heapless 0.8.0",
+ "rand_core",
 ]
 
 [[package]]
