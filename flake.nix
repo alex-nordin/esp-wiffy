@@ -62,8 +62,10 @@ description = "Development shell for esp32 board";
           enterShell = ''
           export PASSWORD=$(rage -d ./secrets/wiffy.age -i ~/.config/sops/age/keys.txt)
           export SSID=$(rage -d ./secrets/ssid.age -i ~/.config/sops/age/keys.txt)
+          export MQTT_PASS=$(rage -d ./secrets/mqtt_pass.age -i ~/.config/sops/age/keys.txt)
           echo $PASSWORD
           echo $SSID
+          echo $MQTT_PASS
           '';
         };
       };
