@@ -3,7 +3,7 @@
 #![feature(type_alias_impl_trait)]
 
 use embassy_executor::Spawner;
-use embassy_net::{tcp::TcpSocket, Config, Ipv4Address, Stack, StackResources};
+use embassy_net::{dns::DnsQueryType, tcp::TcpSocket, Config, Ipv4Address, Stack, StackResources};
 use embassy_time::{Duration, Timer};
 use embedded_svc::wifi::{ClientConfiguration, Configuration, Wifi};
 use esp_backtrace as _;
@@ -25,7 +25,7 @@ use static_cell::make_static;
 const SSID: &str = env!("SSID");
 const PASSWORD: &str = env!("PASSWORD");
 const MQTT_PASSWORD: &str = env!("MQTT_PASS");
-const MQTT_USER: &str = "peep";
+const MQTT_USER: &str = env!("MQTT_USER");
 
 #[main]
 async fn main(spawner: Spawner) -> ! {
@@ -99,38 +99,33 @@ async fn main(spawner: Spawner) -> ! {
     loop {
         let mut rx_buffer = [0; 4096];
         let mut tx_buffer = [0; 4096];
-        let localhost = (Ipv4Address::new(127, 0, 0, 1), 1883);
+        let broker_address = match stack
+            .dns_query("broker.emqx.io", DnsQueryType::A)
+            .await
+            .map(|address_vec| address_vec[0])
+        {
+            Ok(broker_address) => broker_address,
+            Err(e) => {
+                println!("DNS error: {:?}", e);
+                continue;
+            }
+        };
+        println!("broker address: {:?}", broker_address);
+        let outer_heaven = (broker_address, 1883);
         let mut tcp_socket = TcpSocket::new(&stack, &mut rx_buffer, &mut tx_buffer);
 
         tcp_socket.set_timeout(Some(embassy_time::Duration::from_secs(10)));
 
         println!("connecting...");
-        // let tcp_response = tcp_socket.connect(localhost).await;
+        let tcp_response = tcp_socket.connect(outer_heaven).await;
         if let Err(e) = tcp_response {
             println!("connect error: {:?}", e);
             continue;
         }
         println!("connected!");
-        // // println!("connected!");
-        // // match tcp_socket.connect(localhost).await {
-        // //     Ok(()) => println!("connected to localhost"),
-        // //     Err(e) => println!("connection error: {:?}", e),
-        // // }
-        // loop {
-        //     match tcp_socket.connect(localhost).await {
-        //         Ok(()) => {
-        //             println!("connected to localhost");
-        //             break;
-        //         }
-        //         Err(e) => println!("connection error: {:?}", e),
-        //     }
-        //     Timer::after(Duration::from_millis(500)).await;
-        // }
-        // tcp_response = tcp_socket.connect(localhost).await;
-        // let rng_counter = CountingRng(50000);
-        let mut mqtt_conf: ClientConfig<'_, 5, CountingRng> =
-            ClientConfig::new(MqttVersion::MQTTv5, CountingRng(50000));
-        mqtt_conf.add_client_id("esp");
+
+        let mut mqtt_conf: ClientConfig<'_, 4, CountingRng> =
+            ClientConfig::new(MqttVersion::MQTTv5, CountingRng(20000));
         mqtt_conf.add_username(MQTT_USER);
         mqtt_conf.add_password(MQTT_PASSWORD);
 
@@ -154,13 +149,14 @@ async fn main(spawner: Spawner) -> ! {
         loop {
             mqtt_client
                 .send_message(
-                    "test",
+                    "esp32/shazbot/test",
                     b"hey, I'm an esp32c3",
-                    rust_mqtt::packet::v5::publish_packet::QualityOfService::QoS2,
+                    rust_mqtt::packet::v5::publish_packet::QualityOfService::QoS0,
                     true,
                 )
                 .await
-                .unwrap();
+                .expect("unable to send message");
+            println!("just sent a message over mqtt");
             Timer::after(Duration::from_secs(5)).await;
         }
     }
