@@ -4,6 +4,8 @@
 
 use embassy_executor::Spawner;
 use embassy_net::{dns::DnsQueryType, tcp::TcpSocket, Config, Stack, StackResources};
+use embassy_sync::blocking_mutex::raw::NoopRawMutex;
+use embassy_sync::channel::Channel;
 use embassy_time::{Duration, Timer};
 use embedded_svc::wifi::{ClientConfiguration, Configuration, Wifi};
 use esp_backtrace as _;
@@ -21,6 +23,9 @@ use rust_mqtt::{
     utils::rng_generator::CountingRng,
 };
 use static_cell::make_static;
+
+// / use embassy_sync::blocking_mutex::raw::NoopRawMutex;
+static mut SHARED_CHANNEL: Channel<NoopRawMutex, u32, 4> = Channel::new();
 
 const SSID: &str = env!("SSID");
 const PASSWORD: &str = env!("PASSWORD");
@@ -155,35 +160,10 @@ async fn main(spawner: Spawner) -> ! {
     }
 }
 
-// fn new_tcp_socket<'a, D: Driver>(stack: &'a Stack<D>) -> TcpSocket<'a> {
-//     let mut rx_buffer = [0; 4096];
-//     let mut tx_buffer = [0; 4096];
-//     let mut tcp_socket = TcpSocket::new(stack, &mut rx_buffer, &mut tx_buffer);
-//     tcp_socket.set_timeout(Some(embassy_time::Duration::from_secs(10)));
-
-//     tcp_socket
-// }
-
-// async fn mqtt_pub(client: Type) {}
 // #[embassy_executor::task]
-// async fn mqtt_connect(socket: &mut TcpSocket<'static>) {
-//     // MQTT CONFIG START
-//     let mut mqtt_conf: ClientConfig<'_, 4, CountingRng> =
-//         ClientConfig::new(MqttVersion::MQTTv5, CountingRng(20000));
-//     mqtt_conf.add_username(MQTT_USER);
-//     mqtt_conf.add_password(MQTT_PASSWORD);
-
-//     let mut r_buffer = [0; 225];
-//     let mut w_buffer = [0; 225];
-
-//     let mut mqtt_client =
-//         MqttClient::new(socket, &mut w_buffer, 100, &mut r_buffer, 100, mqtt_conf);
-
-//     match mqtt_client.connect_to_broker().await {
-//         Ok(()) => (),
-//         Err(e) => println!("encountered mqtt error: {:?}", e),
-//     }
-
+// async fn mqtt_pub(
+//     mqtt_client: &'static mut MqttClient<'static, TcpSocket<'static>, 4, CountingRng>,
+// ) {
 //     loop {
 //         mqtt_client
 //             .send_message(
