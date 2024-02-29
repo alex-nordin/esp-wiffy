@@ -3,7 +3,7 @@
 #![feature(type_alias_impl_trait)]
 
 use embassy_executor::Spawner;
-use embassy_net::{dns::DnsQueryType, tcp::TcpSocket, Config, Ipv4Address, Stack, StackResources};
+use embassy_net::{dns::DnsQueryType, tcp::TcpSocket, Config, Stack, StackResources};
 use embassy_time::{Duration, Timer};
 use embedded_svc::wifi::{ClientConfiguration, Configuration, Wifi};
 use esp_backtrace as _;
@@ -37,46 +37,39 @@ async fn main(spawner: Spawner) -> ! {
 
     let clocks = ClockControl::max(system.clock_control).freeze();
     let timer = hal::systimer::SystemTimer::new(peripherals.SYSTIMER).alarm0;
+    let mut hardware_rng = Rng::new(peripherals.RNG);
+    let seed = hardware_rng.random();
     let wifi_init = initialize(
         EspWifiInitFor::Wifi,
         timer,
-        Rng::new(peripherals.RNG),
+        hardware_rng,
         system.radio_clock_control,
         &clocks,
     )
-    .unwrap();
+    .expect("error initializing wifi");
 
     let wifi = peripherals.WIFI;
     let (wifi_interface, controller) =
-        esp_wifi::wifi::new_with_mode(&wifi_init, wifi, WifiStaDevice).unwrap();
+        esp_wifi::wifi::new_with_mode(&wifi_init, wifi, WifiStaDevice)
+            .expect("couldn't create wifi interface");
 
     let timer_group0 = TimerGroup::new(peripherals.TIMG0, &clocks);
     embassy::init(&clocks, timer_group0);
 
     let dhcp_conf = Config::dhcpv4(Default::default());
 
-    let seed = 9128;
-
-    let stack = &*make_static!(Stack::new(
+    let stack: &'static Stack<_> = make_static!(Stack::new(
         wifi_interface,
         dhcp_conf,
         make_static!(StackResources::<3>::new()),
-        seed
+        seed as u64
     ));
-    // let stack: &'static Stack<_> = make_static!(Stack::new(
-    //     wifi_interface,
-    //     dhcp_conf,
-    //     make_static!(StackResources::<3>::new()),
-    //     seed
-    // ));
 
     match spawner.spawn(connection(controller)) {
         Ok(()) => println!("spawning connection task... are we still connected to wifi?"),
         Err(e) => println!("{e:?}"),
     }
-    // spawner.spawn(connection(controller)).ok();
-    // spawner.spawn(net_task(&stack)).ok();
-    match spawner.spawn(net_task(&stack)) {
+    match spawner.spawn(net_task(stack)) {
         Ok(()) => println!("net task ran fine"),
         Err(e) => println!("{e:?}"),
     }
@@ -90,15 +83,13 @@ async fn main(spawner: Spawner) -> ! {
 
     loop {
         if let Some(config) = stack.config_v4() {
-            println!("Got assigned an IP: {}", config.address);
+            println!("got assigned an IP: {}", config.address);
             break;
         }
         Timer::after(Duration::from_millis(500)).await;
     }
 
     loop {
-        let mut rx_buffer = [0; 4096];
-        let mut tx_buffer = [0; 4096];
         let broker_address = match stack
             .dns_query("broker.emqx.io", DnsQueryType::A)
             .await
@@ -112,18 +103,20 @@ async fn main(spawner: Spawner) -> ! {
         };
         println!("broker address: {:?}", broker_address);
         let outer_heaven = (broker_address, 1883);
-        let mut tcp_socket = TcpSocket::new(&stack, &mut rx_buffer, &mut tx_buffer);
+        let mut rx_buffer = [0; 4096];
+        let mut tx_buffer = [0; 4096];
+        let mut tcp_socket = TcpSocket::new(stack, &mut rx_buffer, &mut tx_buffer);
 
         tcp_socket.set_timeout(Some(embassy_time::Duration::from_secs(10)));
 
         println!("connecting...");
-        let tcp_response = tcp_socket.connect(outer_heaven).await;
-        if let Err(e) = tcp_response {
-            println!("connect error: {:?}", e);
-            continue;
-        }
+        tcp_socket
+            .connect(outer_heaven)
+            .await
+            .map_err(|err| println!("connect error {:?}", err))
+            .ok();
         println!("connected!");
-
+        // MQTT CONFIG START
         let mut mqtt_conf: ClientConfig<'_, 4, CountingRng> =
             ClientConfig::new(MqttVersion::MQTTv5, CountingRng(20000));
         mqtt_conf.add_username(MQTT_USER);
@@ -135,9 +128,9 @@ async fn main(spawner: Spawner) -> ! {
         let mut mqtt_client = MqttClient::new(
             tcp_socket,
             &mut w_buffer,
-            100,
+            225,
             &mut r_buffer,
-            100,
+            225,
             mqtt_conf,
         );
 
@@ -162,43 +155,29 @@ async fn main(spawner: Spawner) -> ! {
     }
 }
 
-// #[embassy_executor::task]
-// async fn mqtt_connect() {
-//     let mut msg_buffer = [0u8; 4096];
-
+// fn new_tcp_socket<'a, D: Driver>(stack: &'a Stack<D>) -> TcpSocket<'a> {
 //     let mut rx_buffer = [0; 4096];
 //     let mut tx_buffer = [0; 4096];
-//     let localhost = (Ipv4Address::new(127, 0, 0, 1), 1883);
-//     let mut tcp_socket = TcpSocket::new(&stack, &mut rx_buffer, &mut tx_buffer);
+//     let mut tcp_socket = TcpSocket::new(stack, &mut rx_buffer, &mut tx_buffer);
+//     tcp_socket.set_timeout(Some(embassy_time::Duration::from_secs(10)));
 
-//     // let tcp_response = tcp_socket.connect(localhost).await;
-//     match tcp_socket.connect(localhost).await {
-//         Ok(()) => (),
-//         Err(e) => println!("connection error: {:?}", e),
-//     }
-//     // tcp_response = tcp_socket.connect(localhost).await;
-//     let rng_counter = CountingRng(50000);
-//     let mut mqtt_conf = ClientConfig::new(MqttVersion::MQTTv5, rng_counter);
+//     tcp_socket
+// }
+
+// async fn mqtt_pub(client: Type) {}
+// #[embassy_executor::task]
+// async fn mqtt_connect(socket: &mut TcpSocket<'static>) {
+//     // MQTT CONFIG START
+//     let mut mqtt_conf: ClientConfig<'_, 4, CountingRng> =
+//         ClientConfig::new(MqttVersion::MQTTv5, CountingRng(20000));
 //     mqtt_conf.add_username(MQTT_USER);
 //     mqtt_conf.add_password(MQTT_PASSWORD);
 
 //     let mut r_buffer = [0; 225];
 //     let mut w_buffer = [0; 225];
 
-//     // network_driver: T,
-//     // buffer: &'a mut [u8],
-//     // buffer_len: usize,
-//     // recv_buffer: &'a mut [u8],
-//     // recv_buffer_len: usize,
-//     // config: ClientConfig<'a, MAX_PROPERTIES, R>,
-//     let mut mqtt_client = MqttClient::new(
-//         tcp_socket,
-//         &mut w_buffer,
-//         100,
-//         &mut r_buffer,
-//         100,
-//         mqtt_conf,
-//     );
+//     let mut mqtt_client =
+//         MqttClient::new(socket, &mut w_buffer, 100, &mut r_buffer, 100, mqtt_conf);
 
 //     match mqtt_client.connect_to_broker().await {
 //         Ok(()) => (),
@@ -206,12 +185,16 @@ async fn main(spawner: Spawner) -> ! {
 //     }
 
 //     loop {
-//         mqtt_client.send_message(
-//             "test",
-//             b"hey, I'm an esp32c3",
-//             rust_mqtt::packet::v5::publish_packet::QualityOfService::QoS2,
-//             true,
-//         );
+//         mqtt_client
+//             .send_message(
+//                 "esp32/shazbot/test",
+//                 b"hey, I'm an esp32c3",
+//                 rust_mqtt::packet::v5::publish_packet::QualityOfService::QoS0,
+//                 true,
+//             )
+//             .await
+//             .expect("unable to send message");
+//         println!("just sent a message over mqtt");
 //         Timer::after(Duration::from_secs(5)).await;
 //     }
 // }
@@ -221,14 +204,11 @@ async fn connection(mut controller: WifiController<'static>) {
     println!("trying to connect ");
     println!("device capabilities {:?}", controller.get_capabilities());
     loop {
-        match esp_wifi::wifi::get_wifi_state() {
-            WifiState::StaConnected => {
-                controller
-                    .wait_for_event(esp_wifi::wifi::WifiEvent::StaDisconnected)
-                    .await;
-                Timer::after(Duration::from_millis(5000)).await;
-            }
-            _ => {}
+        if esp_wifi::wifi::get_wifi_state() == WifiState::StaConnected {
+            controller
+                .wait_for_event(esp_wifi::wifi::WifiEvent::StaDisconnected)
+                .await;
+            Timer::after(Duration::from_millis(5000)).await;
         }
         if !matches!(controller.is_started(), Ok(true)) {
             let client_conf = Configuration::Client(ClientConfiguration {

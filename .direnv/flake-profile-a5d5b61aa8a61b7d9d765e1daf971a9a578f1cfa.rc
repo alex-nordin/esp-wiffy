@@ -22,7 +22,7 @@ OSTYPE='linux-gnu'
 PATH='/path-not-set'
 export PATH
 PS4='+ '
-builder='/nix/store/1zslabm02hi75anb2w8zjrqwzgs0vrs3-bash-interactive-5.2p26/bin/bash'
+builder='/nix/store/vmgwn3xsbyj860z2bazvg4n10c4kp3xk-bash-interactive-5.2p26/bin/bash'
 export builder
 dontAddDisableDepTrack='1'
 export dontAddDisableDepTrack
@@ -42,13 +42,13 @@ unset dontAddDisableDepTrack outputs
 
 # For `nix develop`. We get /noshell on Linux and /sbin/nologin on macOS.
 if [[ "$SHELL" == "/noshell" || "$SHELL" == "/sbin/nologin" ]]; then
-  export SHELL=/nix/store/1zslabm02hi75anb2w8zjrqwzgs0vrs3-bash-interactive-5.2p26/bin/bash
+  export SHELL=/nix/store/vmgwn3xsbyj860z2bazvg4n10c4kp3xk-bash-interactive-5.2p26/bin/bash
 fi
 
 # https://github.com/numtide/devshell/issues/158
 PATH=${PATH#/path-not-set:}
 
-export DEVENV_PROFILE=/nix/store/r0kicwj51wy55isd7qg9rkqfv7nv2ppv-devenv-profile
+export DEVENV_PROFILE=/nix/store/6vqnbkb9jk4j90fk7f5s8mmljaizhvmv-devenv-profile
 
 # add installed packages to PATH
 export PATH="$DEVENV_PROFILE/bin:$PATH"
@@ -64,7 +64,7 @@ export XDG_DATA_DIRS="$DEVENV_PROFILE/share:${XDG_DATA_DIRS-}"
 export XDG_CONFIG_DIRS="$DEVENV_PROFILE/etc/xdg:${XDG_CONFIG_DIRS-}"
 
 export DEVENV_DOTFILE='\''/home/alexn/projects/esp-wiffy/.devenv'\''
-export DEVENV_PROFILE='\''/nix/store/r0kicwj51wy55isd7qg9rkqfv7nv2ppv-devenv-profile'\''
+export DEVENV_PROFILE='\''/nix/store/6vqnbkb9jk4j90fk7f5s8mmljaizhvmv-devenv-profile'\''
 export DEVENV_ROOT='\''/home/alexn/projects/esp-wiffy'\''
 export DEVENV_STATE='\''/home/alexn/projects/esp-wiffy/.devenv/state'\''
 
@@ -82,7 +82,7 @@ export PS1="\[\e[0;34m\](devenv)\[\e[0m\] ${PS1-}"
 
 # set path to locales on non-NixOS Linux hosts
 if [ -z "${LOCALE_ARCHIVE-}" ]; then
-  export LOCALE_ARCHIVE=/nix/store/frs2sx95k1bnnqlvkbq1psfpacslq984-glibc-locales-2.38-44/lib/locale/locale-archive
+  export LOCALE_ARCHIVE=/nix/store/65cgabz9i8m9s0611033wd5r7k3vn8n7-glibc-locales-2.38-44/lib/locale/locale-archive
 fi
 
 
@@ -99,11 +99,11 @@ fi
 
 mkdir -p .devenv
 rm -f .devenv/profile
-ln -s /nix/store/r0kicwj51wy55isd7qg9rkqfv7nv2ppv-devenv-profile .devenv/profile
+ln -s /nix/store/6vqnbkb9jk4j90fk7f5s8mmljaizhvmv-devenv-profile .devenv/profile
 
 '
 export shellHook
-stdenv='/nix/store/is2zycpwgi0jwb81pink4ik8z6knl6x8-naked-stdenv'
+stdenv='/nix/store/kl3ri6r2af4klm6l1k1qg3r7c53byv5r-naked-stdenv'
 export stdenv
 system='x86_64-linux'
 export system
