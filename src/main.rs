@@ -4,7 +4,7 @@
 
 use embassy_executor::Spawner;
 use embassy_net::{dns::DnsQueryType, tcp::TcpSocket, Config, Stack, StackResources};
-use embassy_sync::blocking_mutex::raw::NoopRawMutex;
+use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::Channel;
 use embassy_time::{Duration, Timer};
 use embedded_svc::wifi::{ClientConfiguration, Configuration, Wifi};
@@ -18,6 +18,7 @@ use esp_wifi::{
 use hal::{
     clock::ClockControl, embassy, peripherals::Peripherals, prelude::*, timer::TimerGroup, Rng,
 };
+use heapless::String;
 use rust_mqtt::{
     client::{client::MqttClient, client_config::ClientConfig, client_config::MqttVersion},
     utils::rng_generator::CountingRng,
@@ -25,7 +26,7 @@ use rust_mqtt::{
 use static_cell::make_static;
 
 // / use embassy_sync::blocking_mutex::raw::NoopRawMutex;
-static mut SHARED_CHANNEL: Channel<NoopRawMutex, u32, 4> = Channel::new();
+static SHARED_CHANNEL: Channel<CriticalSectionRawMutex, u32, 4> = Channel::new();
 
 const SSID: &str = env!("SSID");
 const PASSWORD: &str = env!("PASSWORD");
@@ -144,40 +145,52 @@ async fn main(spawner: Spawner) -> ! {
             Err(e) => println!("encountered mqtt error: {:?}", e),
         }
 
+        match spawner.spawn(send()) {
+            Ok(()) => println!("spawned send task 1"),
+            Err(e) => println!("{e:?}"),
+        }
+
+        match spawner.spawn(send_2()) {
+            Ok(()) => println!("spawned send task 2"),
+            Err(e) => println!("{e:?}"),
+        }
+
         loop {
+            let msg = SHARED_CHANNEL.receive().await;
+            // msg.to_string().as_bytes;
+            let send: String<8> = String::try_from(msg).unwrap();
+            println!("channel message: {:?}", msg);
+            // let send = stringify!(msg).as_bytes();
             mqtt_client
                 .send_message(
                     "esp32/shazbot/test",
-                    b"hey, I'm an esp32c3",
+                    send.as_bytes(),
                     rust_mqtt::packet::v5::publish_packet::QualityOfService::QoS0,
                     true,
                 )
                 .await
                 .expect("unable to send message");
             println!("just sent a message over mqtt");
-            Timer::after(Duration::from_secs(5)).await;
+            Timer::after(Duration::from_millis(400)).await;
         }
     }
 }
 
-// #[embassy_executor::task]
-// async fn mqtt_pub(
-//     mqtt_client: &'static mut MqttClient<'static, TcpSocket<'static>, 4, CountingRng>,
-// ) {
-//     loop {
-//         mqtt_client
-//             .send_message(
-//                 "esp32/shazbot/test",
-//                 b"hey, I'm an esp32c3",
-//                 rust_mqtt::packet::v5::publish_packet::QualityOfService::QoS0,
-//                 true,
-//             )
-//             .await
-//             .expect("unable to send message");
-//         println!("just sent a message over mqtt");
-//         Timer::after(Duration::from_secs(5)).await;
-//     }
-// }
+#[embassy_executor::task]
+async fn send() {
+    loop {
+        SHARED_CHANNEL.send(222).await;
+        Timer::after(Duration::from_secs(5)).await;
+    }
+}
+
+#[embassy_executor::task]
+async fn send_2() {
+    loop {
+        SHARED_CHANNEL.send(999).await;
+        Timer::after(Duration::from_secs(2)).await;
+    }
+}
 
 #[embassy_executor::task]
 async fn connection(mut controller: WifiController<'static>) {
