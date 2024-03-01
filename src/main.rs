@@ -25,8 +25,15 @@ use rust_mqtt::{
 };
 use static_cell::make_static;
 
+#[derive(Debug)]
+enum PubPacket {
+    Temp(i32),
+    Other(i32),
+}
 // / use embassy_sync::blocking_mutex::raw::NoopRawMutex;
-static SHARED_CHANNEL: Channel<CriticalSectionRawMutex, u32, 4> = Channel::new();
+// static SHARED_CHANNEL: Channel<CriticalSectionRawMutex, u32, 4> = Channel::new();
+// static STRING_CHANNEL: Channel<CriticalSectionRawMutex, String<8>, 4> = Channel::new();
+static SHARED_CHANNEL: Channel<CriticalSectionRawMutex, PubPacket, 4> = Channel::new();
 
 const SSID: &str = env!("SSID");
 const PASSWORD: &str = env!("PASSWORD");
@@ -158,19 +165,46 @@ async fn main(spawner: Spawner) -> ! {
         loop {
             let msg = SHARED_CHANNEL.receive().await;
             // msg.to_string().as_bytes;
-            let send: String<8> = String::try_from(msg).unwrap();
-            println!("channel message: {:?}", msg);
+            // let send: String<8> = String::try_from(msg).unwrap();
+            // println!("channel message: {:?}", msg);
             // let send = stringify!(msg).as_bytes();
-            mqtt_client
-                .send_message(
-                    "esp32/shazbot/test",
-                    send.as_bytes(),
-                    rust_mqtt::packet::v5::publish_packet::QualityOfService::QoS0,
-                    true,
-                )
-                .await
-                .expect("unable to send message");
-            println!("just sent a message over mqtt");
+            // #[derive(Debug)]
+            // enum PubPacket {
+            //     Temp(i32),
+            //     Other(i32),
+            // }
+            match msg {
+                PubPacket::Temp(_val) => {
+                    let mut send: String<20> =
+                        String::try_from(_val).expect("failed to create heapless string");
+                    send.push_str("_tmp").unwrap();
+                    mqtt_client
+                        .send_message(
+                            "esp32/shazbot/test",
+                            send.as_bytes(),
+                            rust_mqtt::packet::v5::publish_packet::QualityOfService::QoS0,
+                            true,
+                        )
+                        .await
+                        .expect("unable to send message");
+                    println!("just sent a message over mqtt");
+                }
+                PubPacket::Other(_val) => {
+                    let mut send: String<20> =
+                        String::try_from(_val).expect("failed to create heapless string");
+                    send.push_str("_other").unwrap();
+                    mqtt_client
+                        .send_message(
+                            "esp32/shazbot/test",
+                            send.as_bytes(),
+                            rust_mqtt::packet::v5::publish_packet::QualityOfService::QoS0,
+                            true,
+                        )
+                        .await
+                        .expect("unable to send message");
+                    println!("just sent a message over mqtt");
+                }
+            }
             Timer::after(Duration::from_millis(400)).await;
         }
     }
@@ -179,7 +213,8 @@ async fn main(spawner: Spawner) -> ! {
 #[embassy_executor::task]
 async fn send() {
     loop {
-        SHARED_CHANNEL.send(222).await;
+        let tmp_reading = PubPacket::Temp(999);
+        SHARED_CHANNEL.send(tmp_reading).await;
         Timer::after(Duration::from_secs(5)).await;
     }
 }
@@ -187,7 +222,8 @@ async fn send() {
 #[embassy_executor::task]
 async fn send_2() {
     loop {
-        SHARED_CHANNEL.send(999).await;
+        let other_reading = PubPacket::Other(444);
+        SHARED_CHANNEL.send(other_reading).await;
         Timer::after(Duration::from_secs(2)).await;
     }
 }
