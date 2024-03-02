@@ -71,9 +71,6 @@ async fn main(spawner: Spawner) -> ! {
     let timer_group0 = TimerGroup::new(peripherals.TIMG0, &clocks);
     embassy::init(&clocks, timer_group0);
 
-    let analog_pin = io.pins.gpio0.into_analog();
-    let analog = peripherals.APB_SARADC.split();
-
     let dhcp_conf = Config::dhcpv4(Default::default());
 
     let stack: &'static Stack<_> = make_static!(Stack::new(
