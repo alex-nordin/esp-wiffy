@@ -16,7 +16,7 @@ use esp_wifi::{
     EspWifiInitFor,
 };
 use hal::{
-    clock::ClockControl, embassy, peripherals::Peripherals, prelude::*, timer::TimerGroup, Rng,
+    clock::ClockControl, embassy, peripherals::Peripherals, prelude::*, timer::TimerGroup, Rng, IO,
 };
 use heapless::String;
 use rust_mqtt::{
@@ -48,6 +48,8 @@ async fn main(spawner: Spawner) -> ! {
     let peripherals = Peripherals::take();
     let system = peripherals.SYSTEM.split();
 
+    let io = IO::new(peripherals.GPIO, peripherals.IO_MUX);
+
     let clocks = ClockControl::max(system.clock_control).freeze();
     let timer = hal::systimer::SystemTimer::new(peripherals.SYSTIMER).alarm0;
     let mut hardware_rng = Rng::new(peripherals.RNG);
@@ -68,6 +70,9 @@ async fn main(spawner: Spawner) -> ! {
 
     let timer_group0 = TimerGroup::new(peripherals.TIMG0, &clocks);
     embassy::init(&clocks, timer_group0);
+
+    let analog_pin = io.pins.gpio0.into_analog();
+    let analog = peripherals.APB_SARADC.split();
 
     let dhcp_conf = Config::dhcpv4(Default::default());
 
@@ -152,6 +157,10 @@ async fn main(spawner: Spawner) -> ! {
             Err(e) => println!("encountered mqtt error: {:?}", e),
         }
 
+        // match spawner.spawn(send_tmp(analog_pin, analog)) {
+        //     Ok(()) => println!("spawned send task 1"),
+        //     Err(e) => println!("{e:?}"),
+        // }
         match spawner.spawn(send()) {
             Ok(()) => println!("spawned send task 1"),
             Err(e) => println!("{e:?}"),
@@ -164,19 +173,12 @@ async fn main(spawner: Spawner) -> ! {
 
         loop {
             let msg = SHARED_CHANNEL.receive().await;
-            // msg.to_string().as_bytes;
-            // let send: String<8> = String::try_from(msg).unwrap();
-            // println!("channel message: {:?}", msg);
-            // let send = stringify!(msg).as_bytes();
-            // #[derive(Debug)]
-            // enum PubPacket {
-            //     Temp(i32),
-            //     Other(i32),
-            // }
+
             match msg {
                 PubPacket::Temp(_val) => {
+                    let val_int = _val as i32;
                     let mut send: String<20> =
-                        String::try_from(_val).expect("failed to create heapless string");
+                        String::try_from(val_int).expect("failed to create heapless string");
                     send.push_str("_tmp").unwrap();
                     mqtt_client
                         .send_message(
@@ -213,8 +215,8 @@ async fn main(spawner: Spawner) -> ! {
 #[embassy_executor::task]
 async fn send() {
     loop {
-        let tmp_reading = PubPacket::Temp(999);
-        SHARED_CHANNEL.send(tmp_reading).await;
+        let reading = PubPacket::Temp(99);
+        SHARED_CHANNEL.send(reading).await;
         Timer::after(Duration::from_secs(5)).await;
     }
 }

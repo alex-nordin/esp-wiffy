@@ -575,6 +575,7 @@ dependencies = [
  "esp-wifi",
  "esp32c3-hal",
  "heapless 0.8.0",
+ "micromath",
  "rust-mqtt",
  "static_cell",
 ]
@@ -1015,6 +1016,12 @@ name = "memchr"
 version = "2.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "523dc4f511e55ab87b694dc30d0f820d60906ef06413f93d4d7a1385599cc149"
+
+[[package]]
+name = "micromath"
+version = "2.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c3c8dda44ff03a2f238717214da50f65d5a53b45cd213a7370424ffdb6fae815"
 
 [[package]]
 name = "minijinja"
