@@ -2,6 +2,7 @@
 #![no_main]
 #![feature(type_alias_impl_trait)]
 
+use dht_sensor::*;
 use embassy_executor::Spawner;
 use embassy_net::{dns::DnsQueryType, tcp::TcpSocket, Config, Stack, StackResources};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
@@ -16,7 +17,8 @@ use esp_wifi::{
     EspWifiInitFor,
 };
 use hal::{
-    clock::ClockControl, embassy, peripherals::Peripherals, prelude::*, timer::TimerGroup, Rng, IO,
+    clock::ClockControl, embassy, peripherals::Peripherals, prelude::*, timer::TimerGroup, Delay,
+    Rng, IO,
 };
 use heapless::String;
 use rust_mqtt::{
@@ -25,10 +27,12 @@ use rust_mqtt::{
 };
 use static_cell::make_static;
 
+// mod dht;
+
 #[derive(Debug)]
 enum PubPacket {
-    Temp(i32),
-    Other(i32),
+    Temp(i8, u8),
+    Other(bool),
 }
 // / use embassy_sync::blocking_mutex::raw::NoopRawMutex;
 // static SHARED_CHANNEL: Channel<CriticalSectionRawMutex, u32, 4> = Channel::new();
@@ -50,6 +54,11 @@ async fn main(spawner: Spawner) -> ! {
 
     let io = IO::new(peripherals.GPIO, peripherals.IO_MUX);
 
+    let dht_pin = make_static!(io.pins.gpio1.into_open_drain_output());
+    let flame_pin = io.pins.gpio2.into_inverted_pull_down_input();
+    //GpioPin<InvertedInput<PullDown>, 2>
+    // flame_pin.listen()
+
     let clocks = ClockControl::max(system.clock_control).freeze();
     let timer = hal::systimer::SystemTimer::new(peripherals.SYSTIMER).alarm0;
     let mut hardware_rng = Rng::new(peripherals.RNG);
@@ -62,6 +71,7 @@ async fn main(spawner: Spawner) -> ! {
         &clocks,
     )
     .expect("error initializing wifi");
+    let delay = make_static!(Delay::new(&clocks));
 
     let wifi = peripherals.WIFI;
     let (wifi_interface, controller) =
@@ -158,12 +168,12 @@ async fn main(spawner: Spawner) -> ! {
         //     Ok(()) => println!("spawned send task 1"),
         //     Err(e) => println!("{e:?}"),
         // }
-        match spawner.spawn(send()) {
+        match spawner.spawn(send_temp(dht_pin, delay)) {
             Ok(()) => println!("spawned send task 1"),
             Err(e) => println!("{e:?}"),
         }
 
-        match spawner.spawn(send_2()) {
+        match spawner.spawn(detect_flame(flame_pin)) {
             Ok(()) => println!("spawned send task 2"),
             Err(e) => println!("{e:?}"),
         }
@@ -172,15 +182,31 @@ async fn main(spawner: Spawner) -> ! {
             let msg = SHARED_CHANNEL.receive().await;
 
             match msg {
-                PubPacket::Temp(_val) => {
-                    let val_int = _val as i32;
-                    let mut send: String<20> =
-                        String::try_from(val_int).expect("failed to create heapless string");
-                    send.push_str("_tmp").unwrap();
+                PubPacket::Temp(temp, humi) => {
+                    // let val_int = _val as i32;
+                    let mut send_t: String<20> =
+                        String::try_from(temp).expect("failed to create heapless string");
+                    send_t
+                        .push_str("_tmp")
+                        .expect("failed to create heapless string");
+                    let mut send_h: String<30> =
+                        String::try_from(humi).expect("failed to create heapless string");
+                    send_h
+                        .push_str("_humidity")
+                        .expect("failed to append string to message");
                     mqtt_client
                         .send_message(
                             "esp32/shazbot/test",
-                            send.as_bytes(),
+                            send_t.as_bytes(),
+                            rust_mqtt::packet::v5::publish_packet::QualityOfService::QoS0,
+                            true,
+                        )
+                        .await
+                        .expect("unable to send message");
+                    mqtt_client
+                        .send_message(
+                            "esp32/shazbot/test",
+                            send_h.as_bytes(),
                             rust_mqtt::packet::v5::publish_packet::QualityOfService::QoS0,
                             true,
                         )
@@ -188,20 +214,19 @@ async fn main(spawner: Spawner) -> ! {
                         .expect("unable to send message");
                     println!("just sent a message over mqtt");
                 }
-                PubPacket::Other(_val) => {
-                    let mut send: String<20> =
-                        String::try_from(_val).expect("failed to create heapless string");
-                    send.push_str("_other").unwrap();
-                    mqtt_client
-                        .send_message(
-                            "esp32/shazbot/test",
-                            send.as_bytes(),
-                            rust_mqtt::packet::v5::publish_packet::QualityOfService::QoS0,
-                            true,
-                        )
-                        .await
-                        .expect("unable to send message");
-                    println!("just sent a message over mqtt");
+                PubPacket::Other(val) => {
+                    if val {
+                        mqtt_client
+                            .send_message(
+                                "esp32/shazbot/test",
+                                b"FIRE",
+                                rust_mqtt::packet::v5::publish_packet::QualityOfService::QoS0,
+                                true,
+                            )
+                            .await
+                            .expect("unable to send message");
+                        println!("just sent a message over mqtt");
+                    }
                 }
             }
             Timer::after(Duration::from_millis(400)).await;
@@ -209,21 +234,33 @@ async fn main(spawner: Spawner) -> ! {
     }
 }
 
+type OpenDrainPin = hal::gpio::GpioPin<hal::gpio::Output<hal::gpio::OpenDrain>, 1>;
 #[embassy_executor::task]
-async fn send() {
+async fn send_temp(pin: &'static mut OpenDrainPin, delay: &'static mut Delay) {
     loop {
-        let reading = PubPacket::Temp(99);
-        SHARED_CHANNEL.send(reading).await;
-        Timer::after(Duration::from_secs(5)).await;
+        match dht11::Reading::read(delay, pin) {
+            Ok(dht11::Reading {
+                temperature,
+                relative_humidity,
+            }) => {
+                let send_reading = PubPacket::Temp(temperature, relative_humidity);
+                SHARED_CHANNEL.send(send_reading).await;
+                Timer::after(Duration::from_secs(10)).await;
+            }
+            Err(e) => println!("error taking dht reading: {e:?}"),
+        }
     }
 }
 
+type PullDownInput = hal::gpio::GpioPin<hal::gpio::InvertedInput<hal::gpio::PullDown>, 2>;
 #[embassy_executor::task]
-async fn send_2() {
+async fn detect_flame(pin: PullDownInput) {
     loop {
-        let other_reading = PubPacket::Other(444);
-        SHARED_CHANNEL.send(other_reading).await;
-        Timer::after(Duration::from_secs(2)).await;
+        if pin.is_input_high() {
+            let flame_reading = PubPacket::Other(true);
+            SHARED_CHANNEL.send(flame_reading).await;
+        }
+        Timer::after(Duration::from_millis(200)).await;
     }
 }
 
