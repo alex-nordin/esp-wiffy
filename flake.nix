@@ -1,7 +1,6 @@
 {
-description = "Development shell for esp32 board";
+  description = "Development shell for esp32 board";
   inputs = {
-
     flake-parts.url = "github:hercules-ci/flake-parts";
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     # agenix-shell.url = "github:aciceri/agenix-shell";
@@ -20,11 +19,6 @@ description = "Development shell for esp32 board";
         # 3. Add here: foo.flakeModule
       ];
       systems = ["x86_64-linux"];
-      # agenix-shell = {
-      #   secrets = {
-      #     wifi_p.file = ./secrets/wifi_p.age;
-      #   };
-      # };
       perSystem = {
         config,
         self',
@@ -60,17 +54,16 @@ description = "Development shell for esp32 board";
           ];
 
           enterShell = ''
-          export PASSWORD=$(rage -d ./secrets/wiffy.age -i ~/.config/sops/age/keys.txt)
-          export SSID=$(rage -d ./secrets/ssid.age -i ~/.config/sops/age/keys.txt)
-          export MQTT_PASS=$(rage -d ./secrets/mqtt_pass.age -i ~/.config/sops/age/keys.txt)
-          export MQTT_USER=$(rage -d ./secrets/mqtt_user.age -i ~/.config/sops/age/keys.txt)
-          echo $PASSWORD
-          echo $SSID
-          echo $MQTT_PASS
-          echo $MQTT_USER
+            export PASSWORD=$(rage -d ./secrets/wiffy.age -i ~/.config/sops/age/keys.txt)
+            export SSID=$(rage -d ./secrets/ssid.age -i ~/.config/sops/age/keys.txt)
+            export MQTT_PASS=$(rage -d ./secrets/mqtt_pass.age -i ~/.config/sops/age/keys.txt)
+            export MQTT_USER=$(rage -d ./secrets/mqtt_user.age -i ~/.config/sops/age/keys.txt)
+            echo $PASSWORD
+            echo $SSID
+            echo $MQTT_PASS
+            echo $MQTT_USER
           '';
         };
       };
-};
+    };
 }
-

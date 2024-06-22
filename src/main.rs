@@ -75,7 +75,9 @@ async fn main(spawner: Spawner) -> ! {
     let io = IO::new(peripherals.GPIO, peripherals.IO_MUX);
 
     // I'm using gpio pin 1 as an open drain output for my dht sensor. have to borrow mutable for static lifetime currently
+    // let dht_pin = make_static!(io.pins.gpio1.into_open_drain_output());
     let dht_pin = make_static!(io.pins.gpio1.into_open_drain_output());
+
     // pin 2 is connected to the flame sensor. I pull the pin low, and the sensor pulls it high when it detects flame
     // just reading from this pin so it doesn't need to be mutable or anything
     let flame_pin = io.pins.gpio2.into_inverted_pull_down_input();
